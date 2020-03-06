@@ -16,11 +16,13 @@ package vcs
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 
 	"github.com/runatlantis/atlantis/server/events/vcs/common"
 
+	"github.com/bradleyfalzon/ghinstallation"
 	"github.com/google/go-github/v28/github"
 	"github.com/pkg/errors"
 	"github.com/runatlantis/atlantis/server/events/models"
@@ -36,13 +38,44 @@ type GithubClient struct {
 	ctx    context.Context
 }
 
-// NewGithubClient returns a valid GitHub client.
-func NewGithubClient(hostname string, user string, pass string) (*GithubClient, error) {
-	tp := github.BasicAuthTransport{
-		Username: strings.TrimSpace(user),
-		Password: strings.TrimSpace(pass),
+type GithubCredentials interface {
+	Client() *http.Client
+}
+
+type GithubUserCredentials struct {
+	User  string
+	Token string
+}
+
+func (c *GithubUserCredentials) Client() *http.Client {
+	tr := &github.BasicAuthTransport{
+		Username: strings.TrimSpace(c.User),
+		Password: strings.TrimSpace(c.Token),
 	}
-	client := github.NewClient(tp.Client())
+	return tr.Client()
+}
+
+type GithubAppCredentials struct {
+	App          int64
+	Installation int64
+	Key          string
+}
+
+func (c *GithubAppCredentials) Client() *http.Client {
+	tr := http.DefaultTransport
+
+	itr, err := ghinstallation.NewKeyFromFile(tr, c.App, c.Installation, c.Key)
+	if err != nil {
+		panic(err)
+	}
+
+	// Use installation transport with github.com/google/go-github
+	return &http.Client{Transport: itr}
+}
+
+// NewGithubClient returns a valid GitHub client.
+func NewGithubClient(hostname string, credentials GithubCredentials) (*GithubClient, error) {
+	client := github.NewClient(credentials.Client())
 	// If we're using github.com then we don't need to do any additional configuration
 	// for the client. It we're using Github Enterprise, then we need to manually
 	// set the base url for the API.

@@ -117,10 +117,24 @@ func NewServer(userConfig UserConfig, config Config) (*Server, error) {
 	var bitbucketCloudClient *bitbucketcloud.Client
 	var bitbucketServerClient *bitbucketserver.Client
 	var azuredevopsClient *vcs.AzureDevopsClient
-	if userConfig.GithubUser != "" {
+	if userConfig.GithubUser != "" || userConfig.GithubAppId != 0 {
 		supportedVCSHosts = append(supportedVCSHosts, models.Github)
 		var err error
-		githubClient, err = vcs.NewGithubClient(userConfig.GithubHostname, userConfig.GithubUser, userConfig.GithubToken)
+		var credentials vcs.GithubCredentials
+		if userConfig.GithubUser != "" {
+			credentials = &vcs.GithubUserCredentials{
+				User:  userConfig.GithubUser,
+				Token: userConfig.GithubToken,
+			}
+		} else if userConfig.GithubAppId != 0 {
+			credentials = &vcs.GithubAppCredentials{
+				App:          userConfig.GithubAppId,
+				Installation: userConfig.GithubAppInstallation,
+				Key:          userConfig.GithubAppKey,
+			}
+		}
+
+		githubClient, err = vcs.NewGithubClient(userConfig.GithubHostname, credentials)
 		if err != nil {
 			return nil, err
 		}
