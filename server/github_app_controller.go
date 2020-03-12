@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/google/go-github/github"
+	"github.com/google/go-github/v28/github"
 	"github.com/google/go-querystring/query"
 	"github.com/runatlantis/atlantis/server/logging"
 )
