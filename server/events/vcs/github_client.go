@@ -16,14 +16,10 @@ package vcs
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"net/url"
-	"strconv"
-	"strings"
 
 	"github.com/runatlantis/atlantis/server/events/vcs/common"
 
-	"github.com/bradleyfalzon/ghinstallation"
 	"github.com/google/go-github/v28/github"
 	"github.com/pkg/errors"
 	"github.com/runatlantis/atlantis/server/events/models"
@@ -41,7 +37,11 @@ type GithubClient struct {
 
 // NewGithubClient returns a valid GitHub client.
 func NewGithubClient(hostname string, credentials GithubCredentials) (*GithubClient, error) {
-	client := github.NewClient(credentials.Client())
+	transport, err := credentials.Client()
+	if err != nil {
+		return nil, errors.Wrap(err, "Error initializing github authentication transport")
+	}
+	client := github.NewClient(transport)
 	// If we're using github.com then we don't need to do any additional configuration
 	// for the client. It we're using Github Enterprise, then we need to manually
 	// set the base url for the API.

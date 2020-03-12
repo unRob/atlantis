@@ -26,19 +26,19 @@ func (c *GithubUserCredentials) Client() (*http.Client, error) {
 		Username: strings.TrimSpace(c.User),
 		Password: strings.TrimSpace(c.Token),
 	}
-	return tr.Client()
+	return tr.Client(), nil
 }
 
 // GithubAppCredentials implements GithubCredentials for github app installation token flow
 type GithubAppCredentials struct {
-	AppId   int64
+	AppID   int64
 	KeyPath string
 }
 
 func (c *GithubAppCredentials) getInstallationID() (int64, error) {
 	tr := http.DefaultTransport
 	// A non-installation transport
-	t, err := ghinstallation.NewAppsTransportKeyFromFile(tr, c.AppId, c.KeyPath)
+	t, err := ghinstallation.NewAppsTransportKeyFromFile(tr, c.AppID, c.KeyPath)
 	if err != nil {
 		return 0, err
 	}
@@ -70,7 +70,7 @@ func (c *GithubAppCredentials) Client() (*http.Client, error) {
 	}
 
 	tr := http.DefaultTransport
-	itr, err := ghinstallation.NewKeyFromFile(tr, c.AppId, installationID, c.KeyPath)
+	itr, err := ghinstallation.NewKeyFromFile(tr, c.AppID, installationID, c.KeyPath)
 	if err != nil {
 		return nil, err
 	}

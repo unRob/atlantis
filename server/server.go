@@ -129,7 +129,7 @@ func NewServer(userConfig UserConfig, config Config) (*Server, error) {
 			}
 		} else if userConfig.GithubAppID != 0 {
 			githubCredentials = &vcs.GithubAppCredentials{
-				AppId:   userConfig.GithubAppID,
+				AppID:   userConfig.GithubAppID,
 				KeyPath: userConfig.GithubAppKey,
 			}
 			githubAppEnabled = true
@@ -423,7 +423,7 @@ func NewServer(userConfig UserConfig, config Config) (*Server, error) {
 	githubAppController := &GithubAppController{
 		AtlantisURL:         parsedURL,
 		Logger:              logger,
-		GithubSetupComplete: githubAppIsSetup,
+		GithubSetupComplete: githubAppEnabled,
 		GithubHostname:      userConfig.GithubHostname,
 		GithubOrg:           userConfig.GithubOrg,
 	}

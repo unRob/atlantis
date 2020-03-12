@@ -297,7 +297,10 @@ type GithubAppWorkingDir struct {
 func (g *GithubAppWorkingDir) Clone(log *logging.SimpleLogger, baseRepo models.Repo, headRepo models.Repo, p models.PullRequest, workspace string) (string, bool, error) {
 
 	log.Info("Refreshing git tokens for Github App")
-	client := g.Credentials.Client()
+	client, err := g.Credentials.Client()
+	if err != nil {
+		return "", false, err
+	}
 	token, err := client.Transport.(*ghinstallation.Transport).Token(context.Background())
 	if err != nil {
 		return "", false, err

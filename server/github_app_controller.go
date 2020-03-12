@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/go-github/v28/github"
 	"github.com/google/go-querystring/query"
+	"github.com/pkg/errors"
 	"github.com/runatlantis/atlantis/server/logging"
 )
 
@@ -94,8 +95,8 @@ func (g *GithubAppController) ExchangeCode(w http.ResponseWriter, r *http.Reques
 
 	if res.StatusCode >= 400 {
 		response := []byte{}
-		res.Body.Read(response)
-		g.respond(w, logging.Error, res.StatusCode, "Error exchanging code for token: %q", response)
+		_, err := res.Body.Read(response)
+		g.respond(w, logging.Error, res.StatusCode, "Error exchanging code for token: %q", errors.Wrap(err, string(response)))
 		return
 	}
 	g.Logger.Debug("Found credentials for GitHub app %q with id %d", app.Name, app.ID)
