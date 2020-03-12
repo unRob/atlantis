@@ -14,6 +14,7 @@ import (
 	"github.com/runatlantis/atlantis/server/logging"
 )
 
+// GithubAppController handles the creation and setup of a new GitHub app
 type GithubAppController struct {
 	AtlantisURL         *url.URL
 	Logger              *logging.SimpleLogger
@@ -22,14 +23,9 @@ type GithubAppController struct {
 	GithubOrg           string
 }
 
-type GithubAppCodeExchange struct {
-	ID            int64  `json:"id"`
-	Key           string `json:"pem"`
-	WebhookSecret []byte `json:"webhook_secret"`
-	Name          string `json:"name"`
-}
-
-type GithubAppRequest struct {
+// githubAppRequest contains the query parameters for
+// https://developer.github.com/apps/building-github-apps/creating-github-apps-using-url-parameters/
+type githubAppRequest struct {
 	Name            string   `url:"name"`
 	Description     string   `url:"description"`
 	URL             string   `url:"url"`
@@ -48,7 +44,9 @@ type GithubAppRequest struct {
 	Statuses        string   `url:"statuses"`
 }
 
-type GithubAppResponse struct {
+// githubAppResponse is the json response sent to the user
+// after a successful code exchange
+type githubAppResponse struct {
 	COMMENT       string `json:"_comment"`
 	ID            int64  `json:"gh-app-id"`
 	Key           string `json:"gp-app-key"`
@@ -57,10 +55,11 @@ type GithubAppResponse struct {
 
 // ExchangeCode handles the user coming back from creating their app
 // A code query parameter is exchanged for this app's ID, key, and webhook_secret
+// Implements https://developer.github.com/apps/building-github-apps/creating-github-apps-from-a-manifest/#implementing-the-github-app-manifest-flow
 func (g *GithubAppController) ExchangeCode(w http.ResponseWriter, r *http.Request) {
 
 	if g.GithubSetupComplete {
-		g.respond(w, logging.Error, http.StatusBadRequest, "Atlantis already has github credentials")
+		g.respond(w, logging.Error, http.StatusBadRequest, "Atlantis already has GitHub credentials")
 		return
 	}
 
@@ -69,12 +68,17 @@ func (g *GithubAppController) ExchangeCode(w http.ResponseWriter, r *http.Reques
 		g.respond(w, logging.Debug, http.StatusOK, "Ignoring callback, missing code query parameter")
 	}
 
-	g.Logger.Debug("Exchanging github app code for app credentials")
+	g.Logger.Debug("Exchanging GitHub app code for app credentials")
 	tr := http.DefaultTransport
 	client := github.NewClient(&http.Client{Transport: tr})
 
 	ctx := context.Background()
-	app := &GithubAppCodeExchange{}
+	app := &struct {
+		ID            int64  `json:"id"`
+		Key           string `json:"pem"`
+		WebhookSecret []byte `json:"webhook_secret"`
+		Name          string `json:"name"`
+	}{}
 	url := fmt.Sprintf("/app-manifests/%s/conversions", code)
 	req, err := http.NewRequest("POST", url, nil)
 	if err != nil {
@@ -94,10 +98,10 @@ func (g *GithubAppController) ExchangeCode(w http.ResponseWriter, r *http.Reques
 		g.respond(w, logging.Error, res.StatusCode, "Error exchanging code for token: %q", response)
 		return
 	}
-	g.Logger.Debug("Found credentials for github app %q with id %d", app.Name, app.ID)
+	g.Logger.Debug("Found credentials for GitHub app %q with id %d", app.Name, app.ID)
 
-	response, _ := json.Marshal(&GithubAppResponse{
-		COMMENT:       "Update these values in your atlantis config and restart the server",
+	response, _ := json.Marshal(&githubAppResponse{
+		COMMENT:       "Update these values in your Atlantis config and restart the server",
 		ID:            app.ID,
 		WebhookSecret: app.WebhookSecret,
 		Key:           app.Key,
@@ -105,11 +109,11 @@ func (g *GithubAppController) ExchangeCode(w http.ResponseWriter, r *http.Reques
 	g.respond(w, logging.Info, http.StatusOK, string(response))
 }
 
-// New redirects the user to create a new github app
+// New redirects the user to create a new GitHub app
 func (g *GithubAppController) New(w http.ResponseWriter, r *http.Request) {
 
 	if g.GithubSetupComplete {
-		g.respond(w, logging.Error, http.StatusBadRequest, "Atlantis already has github credentials")
+		g.respond(w, logging.Error, http.StatusBadRequest, "Atlantis already has GitHub credentials")
 		return
 	}
 
@@ -119,7 +123,7 @@ func (g *GithubAppController) New(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	q, _ := query.Values(&GithubAppRequest{
+	q, _ := query.Values(&githubAppRequest{
 		Name:          "Atlantis",
 		Description:   fmt.Sprintf("Terraform Pull Request Automation at %s", g.AtlantisURL),
 		URL:           g.AtlantisURL.String(),
@@ -152,12 +156,13 @@ func (g *GithubAppController) New(w http.ResponseWriter, r *http.Request) {
 		Path:     "/settings/apps/new",
 	}
 
+	// https://developer.github.com/apps/building-github-apps/creating-github-apps-using-url-parameters/#about-github-app-url-parameters
 	if g.GithubOrg != "" {
 		url.Path = fmt.Sprintf("organizations/%s%s", g.GithubOrg, url.Path)
 	}
 
 	w.Header().Add("Location", url.String())
-	g.respond(w, logging.Info, http.StatusTemporaryRedirect, "Redirecting to github...")
+	g.respond(w, logging.Info, http.StatusTemporaryRedirect, "Redirecting to GitHub...")
 }
 
 func (g *GithubAppController) respond(w http.ResponseWriter, lvl logging.LogLevel, code int, format string, args ...interface{}) {
@@ -167,13 +172,13 @@ func (g *GithubAppController) respond(w http.ResponseWriter, lvl logging.LogLeve
 	fmt.Fprintln(w, response)
 }
 
-func (g *GithubAppController) newWebhookSecret(n int) (string, error) {
-	b := make([]byte, n)
-	_, err := rand.Read(b)
-	// Note that err == nil only if we read len(b) bytes.
+func (g *GithubAppController) newWebhookSecret(length int) (string, error) {
+	bytes := make([]byte, length)
+	_, err := rand.Read(bytes)
+
 	if err != nil {
 		return "", err
 	}
 
-	return base64.URLEncoding.EncodeToString(b), err
+	return base64.URLEncoding.EncodeToString(bytes), nil
 }

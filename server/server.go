@@ -114,7 +114,7 @@ func NewServer(userConfig UserConfig, config Config) (*Server, error) {
 	logger := logging.NewSimpleLogger("server", false, userConfig.ToLogLevel())
 	var supportedVCSHosts []models.VCSHostType
 	var githubClient *vcs.GithubClient
-	var githubAppIsSetup bool
+	var githubAppEnabled bool
 	var githubCredentials vcs.GithubCredentials
 	var gitlabClient *vcs.GitlabClient
 	var bitbucketCloudClient *bitbucketcloud.Client
@@ -129,10 +129,10 @@ func NewServer(userConfig UserConfig, config Config) (*Server, error) {
 			}
 		} else if userConfig.GithubAppID != 0 {
 			githubCredentials = &vcs.GithubAppCredentials{
-				App: userConfig.GithubAppID,
-				Key: userConfig.GithubAppKey,
+				AppId:   userConfig.GithubAppID,
+				KeyPath: userConfig.GithubAppKey,
 			}
-			githubAppIsSetup = true
+			githubAppEnabled = true
 		}
 
 		var err error
@@ -260,7 +260,8 @@ func NewServer(userConfig UserConfig, config Config) (*Server, error) {
 		DataDir:       userConfig.DataDir,
 		CheckoutMerge: userConfig.CheckoutStrategy == "merge",
 	}
-	if githubAppIsSetup && userConfig.WriteGitCreds {
+	// provide fresh tokens before clone from the GitHub Apps integration, proxy workingDir
+	if githubAppEnabled && userConfig.WriteGitCreds {
 		workingDir = &events.GithubAppWorkingDir{
 			WorkingDir:     workingDir,
 			Credentials:    githubCredentials,

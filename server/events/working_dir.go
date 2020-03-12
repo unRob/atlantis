@@ -285,8 +285,9 @@ func (w *FileWorkspace) sanitizeGitCredentials(s string, base models.Repo, head 
 	return strings.Replace(baseReplaced, head.CloneURL, head.SanitizedCloneURL, -1)
 }
 
-// GithubAppWorkingDir is a proxy to events.WorkingDir that refreshes the app's token
-// before every clone
+// GithubAppWorkingDir implements WorkingDir.
+// It acts as a proxy to an instance of WorkingDir that refreshes the app's token
+// before every clone, given Github App tokens expire quickly
 type GithubAppWorkingDir struct {
 	WorkingDir     WorkingDir
 	Credentials    vcs.GithubCredentials
@@ -307,6 +308,7 @@ func (g *GithubAppWorkingDir) Clone(log *logging.SimpleLogger, baseRepo models.R
 		return "", false, errors.Wrap(err, "getting home dir to write ~/.git-credentials file")
 	}
 
+	// https://developer.github.com/apps/building-github-apps/authenticating-with-github-apps/#http-based-git-access-by-an-installation
 	if err := WriteGitCreds("x-access-token", token, g.GithubHostname, home, log); err != nil {
 		return "", false, err
 	}
