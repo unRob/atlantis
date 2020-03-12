@@ -24,19 +24,22 @@ type UserConfig struct {
 	GithubHostname             string `mapstructure:"gh-hostname"`
 	GithubToken                string `mapstructure:"gh-token"`
 	GithubUser                 string `mapstructure:"gh-user"`
-	GithubAppId                int64  `mapstructure:"gh-app-id"`
-	GithubAppInstallation      int64  `mapstructure:"gh-app-installation"`
-	GithubAppKey               string `mapstructure:"gh-app-key"`
 	GithubWebhookSecret        string `mapstructure:"gh-webhook-secret"`
-	GitlabHostname             string `mapstructure:"gitlab-hostname"`
-	GitlabToken                string `mapstructure:"gitlab-token"`
-	GitlabUser                 string `mapstructure:"gitlab-user"`
-	GitlabWebhookSecret        string `mapstructure:"gitlab-webhook-secret"`
-	LogLevel                   string `mapstructure:"log-level"`
-	Port                       int    `mapstructure:"port"`
-	RepoConfig                 string `mapstructure:"repo-config"`
-	RepoConfigJSON             string `mapstructure:"repo-config-json"`
-	RepoWhitelist              string `mapstructure:"repo-whitelist"`
+	// GithubOrg is used during the creation of a Github App for atlantis
+	GithubOrg string `mapstructure:"gh-org"`
+	// GithubAppId if defined initializes the Github client with app-based credentials
+	GithubAppID int64 `mapstructure:"gh-app-id"`
+	// GithubAppKey is a path to a file containing the app's private key
+	GithubAppKey        string `mapstructure:"gh-app-key"`
+	GitlabHostname      string `mapstructure:"gitlab-hostname"`
+	GitlabToken         string `mapstructure:"gitlab-token"`
+	GitlabUser          string `mapstructure:"gitlab-user"`
+	GitlabWebhookSecret string `mapstructure:"gitlab-webhook-secret"`
+	LogLevel            string `mapstructure:"log-level"`
+	Port                int    `mapstructure:"port"`
+	RepoConfig          string `mapstructure:"repo-config"`
+	RepoConfigJSON      string `mapstructure:"repo-config-json"`
+	RepoWhitelist       string `mapstructure:"repo-whitelist"`
 	// RequireApproval is whether to require pull request approval before
 	// allowing terraform apply's to be run.
 	RequireApproval bool `mapstructure:"require-approval"`

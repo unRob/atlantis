@@ -14,6 +14,7 @@
 package events
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -21,8 +22,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/bradleyfalzon/ghinstallation"
+	"github.com/mitchellh/go-homedir"
 	"github.com/pkg/errors"
 	"github.com/runatlantis/atlantis/server/events/models"
+	"github.com/runatlantis/atlantis/server/events/vcs"
 	"github.com/runatlantis/atlantis/server/logging"
 )
 
@@ -279,4 +283,49 @@ func (w *FileWorkspace) cloneDir(r models.Repo, p models.PullRequest, workspace 
 func (w *FileWorkspace) sanitizeGitCredentials(s string, base models.Repo, head models.Repo) string {
 	baseReplaced := strings.Replace(s, base.CloneURL, base.SanitizedCloneURL, -1)
 	return strings.Replace(baseReplaced, head.CloneURL, head.SanitizedCloneURL, -1)
+}
+
+// GithubAppWorkingDir is a proxy to events.WorkingDir that refreshes the app's token
+// before every clone
+type GithubAppWorkingDir struct {
+	WorkingDir     WorkingDir
+	Credentials    vcs.GithubCredentials
+	GithubHostname string
+}
+
+func (g *GithubAppWorkingDir) Clone(log *logging.SimpleLogger, baseRepo models.Repo, headRepo models.Repo, p models.PullRequest, workspace string) (string, bool, error) {
+
+	log.Info("Refreshing git tokens for Github App")
+	client := g.Credentials.Client()
+	token, err := client.Transport.(*ghinstallation.Transport).Token(context.Background())
+	if err != nil {
+		return "", false, err
+	}
+
+	home, err := homedir.Dir()
+	if err != nil {
+		return "", false, errors.Wrap(err, "getting home dir to write ~/.git-credentials file")
+	}
+
+	if err := WriteGitCreds("x-access-token", token, g.GithubHostname, home, log); err != nil {
+		return "", false, err
+	}
+
+	return g.WorkingDir.Clone(log, baseRepo, headRepo, p, workspace)
+}
+
+func (g *GithubAppWorkingDir) GetWorkingDir(r models.Repo, p models.PullRequest, workspace string) (string, error) {
+	return g.WorkingDir.GetWorkingDir(r, p, workspace)
+}
+
+func (g *GithubAppWorkingDir) GetPullDir(r models.Repo, p models.PullRequest) (string, error) {
+	return g.WorkingDir.GetPullDir(r, p)
+}
+
+func (g *GithubAppWorkingDir) Delete(r models.Repo, p models.PullRequest) error {
+	return g.WorkingDir.Delete(r, p)
+}
+
+func (g *GithubAppWorkingDir) DeleteForWorkspace(r models.Repo, p models.PullRequest, workspace string) error {
+	return g.WorkingDir.DeleteForWorkspace(r, p, workspace)
 }

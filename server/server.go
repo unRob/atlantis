@@ -66,19 +66,20 @@ const (
 
 // Server runs the Atlantis web server.
 type Server struct {
-	AtlantisVersion    string
-	AtlantisURL        *url.URL
-	Router             *mux.Router
-	Port               int
-	CommandRunner      *events.DefaultCommandRunner
-	Logger             *logging.SimpleLogger
-	Locker             locking.Locker
-	EventsController   *EventsController
-	LocksController    *LocksController
-	IndexTemplate      TemplateWriter
-	LockDetailTemplate TemplateWriter
-	SSLCertFile        string
-	SSLKeyFile         string
+	AtlantisVersion     string
+	AtlantisURL         *url.URL
+	Router              *mux.Router
+	Port                int
+	CommandRunner       *events.DefaultCommandRunner
+	Logger              *logging.SimpleLogger
+	Locker              locking.Locker
+	EventsController    *EventsController
+	GithubAppController *GithubAppController
+	LocksController     *LocksController
+	IndexTemplate       TemplateWriter
+	LockDetailTemplate  TemplateWriter
+	SSLCertFile         string
+	SSLKeyFile          string
 }
 
 // Config holds config for server that isn't passed in by the user.
@@ -113,28 +114,29 @@ func NewServer(userConfig UserConfig, config Config) (*Server, error) {
 	logger := logging.NewSimpleLogger("server", false, userConfig.ToLogLevel())
 	var supportedVCSHosts []models.VCSHostType
 	var githubClient *vcs.GithubClient
+	var githubAppIsSetup bool
+	var githubCredentials vcs.GithubCredentials
 	var gitlabClient *vcs.GitlabClient
 	var bitbucketCloudClient *bitbucketcloud.Client
 	var bitbucketServerClient *bitbucketserver.Client
 	var azuredevopsClient *vcs.AzureDevopsClient
-	if userConfig.GithubUser != "" || userConfig.GithubAppId != 0 {
+	if userConfig.GithubUser != "" || userConfig.GithubAppID != 0 {
 		supportedVCSHosts = append(supportedVCSHosts, models.Github)
-		var err error
-		var credentials vcs.GithubCredentials
 		if userConfig.GithubUser != "" {
-			credentials = &vcs.GithubUserCredentials{
+			githubCredentials = &vcs.GithubUserCredentials{
 				User:  userConfig.GithubUser,
 				Token: userConfig.GithubToken,
 			}
-		} else if userConfig.GithubAppId != 0 {
-			credentials = &vcs.GithubAppCredentials{
-				App:          userConfig.GithubAppId,
-				Installation: userConfig.GithubAppInstallation,
-				Key:          userConfig.GithubAppKey,
+		} else if userConfig.GithubAppID != 0 {
+			githubCredentials = &vcs.GithubAppCredentials{
+				App: userConfig.GithubAppID,
+				Key: userConfig.GithubAppKey,
 			}
+			githubAppIsSetup = true
 		}
 
-		githubClient, err = vcs.NewGithubClient(userConfig.GithubHostname, credentials)
+		var err error
+		githubClient, err = vcs.NewGithubClient(userConfig.GithubHostname, githubCredentials)
 		if err != nil {
 			return nil, err
 		}
@@ -252,10 +254,20 @@ func NewServer(userConfig UserConfig, config Config) (*Server, error) {
 	}
 	lockingClient := locking.NewClient(boltdb)
 	workingDirLocker := events.NewDefaultWorkingDirLocker()
-	workingDir := &events.FileWorkspace{
+
+	var workingDir events.WorkingDir
+	workingDir = &events.FileWorkspace{
 		DataDir:       userConfig.DataDir,
 		CheckoutMerge: userConfig.CheckoutStrategy == "merge",
 	}
+	if githubAppIsSetup && userConfig.WriteGitCreds {
+		workingDir = &events.GithubAppWorkingDir{
+			WorkingDir:     workingDir,
+			Credentials:    githubCredentials,
+			GithubHostname: userConfig.GithubHostname,
+		}
+	}
+
 	projectLocker := &events.DefaultProjectLocker{
 		Locker: lockingClient,
 	}
@@ -407,20 +419,29 @@ func NewServer(userConfig UserConfig, config Config) (*Server, error) {
 		AzureDevopsWebhookBasicPassword: []byte(userConfig.AzureDevopsWebhookPassword),
 		AzureDevopsRequestValidator:     &DefaultAzureDevopsRequestValidator{},
 	}
+	githubAppController := &GithubAppController{
+		AtlantisURL:         parsedURL,
+		Logger:              logger,
+		GithubSetupComplete: githubAppIsSetup,
+		GithubHostname:      userConfig.GithubHostname,
+		GithubOrg:           userConfig.GithubOrg,
+	}
+
 	return &Server{
-		AtlantisVersion:    config.AtlantisVersion,
-		AtlantisURL:        parsedURL,
-		Router:             underlyingRouter,
-		Port:               userConfig.Port,
-		CommandRunner:      commandRunner,
-		Logger:             logger,
-		Locker:             lockingClient,
-		EventsController:   eventsController,
-		LocksController:    locksController,
-		IndexTemplate:      indexTemplate,
-		LockDetailTemplate: lockTemplate,
-		SSLKeyFile:         userConfig.SSLKeyFile,
-		SSLCertFile:        userConfig.SSLCertFile,
+		AtlantisVersion:     config.AtlantisVersion,
+		AtlantisURL:         parsedURL,
+		Router:              underlyingRouter,
+		Port:                userConfig.Port,
+		CommandRunner:       commandRunner,
+		Logger:              logger,
+		Locker:              lockingClient,
+		EventsController:    eventsController,
+		GithubAppController: githubAppController,
+		LocksController:     locksController,
+		IndexTemplate:       indexTemplate,
+		LockDetailTemplate:  lockTemplate,
+		SSLKeyFile:          userConfig.SSLKeyFile,
+		SSLCertFile:         userConfig.SSLCertFile,
 	}, nil
 }
 
@@ -432,6 +453,8 @@ func (s *Server) Start() error {
 	s.Router.HandleFunc("/healthz", s.Healthz).Methods("GET")
 	s.Router.PathPrefix("/static/").Handler(http.FileServer(&assetfs.AssetFS{Asset: static.Asset, AssetDir: static.AssetDir, AssetInfo: static.AssetInfo}))
 	s.Router.HandleFunc("/events", s.EventsController.Post).Methods("POST")
+	s.Router.HandleFunc("/github-app/exchange-code", s.GithubAppController.ExchangeCode).Methods("GET")
+	s.Router.HandleFunc("/github-app/setup", s.GithubAppController.New).Methods("GET")
 	s.Router.HandleFunc("/locks", s.LocksController.DeleteLock).Methods("DELETE").Queries("id", "{id:.*}")
 	s.Router.HandleFunc("/lock", s.LocksController.GetLock).Methods("GET").
 		Queries(LockViewRouteIDQueryParam, fmt.Sprintf("{%s}", LockViewRouteIDQueryParam)).Name(LockViewRouteName)
